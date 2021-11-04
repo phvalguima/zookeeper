@@ -1,0 +1,57 @@
+name: zookeeper
+version: '3.5.9'
+summary: Apache zookeeper cluster in a snap
+description: |
+  Provides the zookeeper in a snap.
+confinement: strict
+grade: stable
+base: core18
+architectures: [amd64]
+# For core18
+assumes: [snapd2.49]
+
+parts:
+  zookeeper:
+    # It defaults to gradlew
+    plugin: maven
+    source: https://github.com/phvalguima/zookeeper
+    source-tag: release-3.5.9-rc2
+    source-type: git
+    maven-options:
+      [-Pstandalone, -DskipTests=true, -Dmaven.compiler.debug=true, -Dmaven.javadoc.skip=false]
+    maven-targets:
+#      - zookeeper-docs
+#      - zookeeper-it
+      - zookeeper-jute
+      - zookeeper-server
+#      - zookeeper-client
+#      - zookeeper-recipes
+#      - zookeeper-assembly
+#      - zookeeper-contrib
+    build-packages:
+      - wget
+      - curl    
+    build-environment:
+      - JAVA_HOME: /usr/lib/jvm/java-11-openjdk-amd64
+    override-build: |
+      snapcraftctl build
+      # Pack all the jar files into a single tarball to be unpacked at prime step
+      find . -name '*.jar' -exec tar -zcvf /tmp/file.tar.gz {} +
+    override-prime: |
+      snapcraftctl prime
+      find /root/parts/zookeeper/src/bin/ -name '*.sh' -exec cp -r "{}" ${SNAPCRAFT_PRIME}/bin/ \;
+      ### wget -qO ${SNAPCRAFT_PRIME}/jar/jmx_prometheus_javaagent.jar https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.15.0/jmx_prometheus_javaagent-0.15.0.jar
+      # Copy the tgz containing all jars needed
+      # kafka-run-class.sh uses the base_dir as:
+      #     base_dir=$(dirname $0)/..
+      # JAR files should placed on the parent folder
+      # IMPORTANT: update the tgz name for new upgrade versions
+      tar -zxvf /tmp/file.tar.gz -C ${SNAPCRAFT_PRIME}/bin/
+apps:
+  zookeeper:
+    command: bin/zkServer.sh start ${SNAP_COMMON}/zookeeper.properties
+    daemon: simple
+    restart-condition: never
+    plugs:
+      - network-bind
+      - network
