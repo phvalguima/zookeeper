@@ -20,14 +20,8 @@ parts:
     maven-options:
       [-Pstandalone, -DskipTests=true, -Dmaven.compiler.debug=true, -Dmaven.javadoc.skip=false]
     maven-targets:
-#      - zookeeper-docs
-#      - zookeeper-it
       - zookeeper-jute
       - zookeeper-server
-#      - zookeeper-client
-#      - zookeeper-recipes
-#      - zookeeper-assembly
-#      - zookeeper-contrib
     build-packages:
       - wget
       - curl    
@@ -40,7 +34,8 @@ parts:
     override-prime: |
       snapcraftctl prime
       find /root/parts/zookeeper/src/bin/ -name '*.sh' -exec cp -r "{}" ${SNAPCRAFT_PRIME}/bin/ \;
-      ### wget -qO ${SNAPCRAFT_PRIME}/jar/jmx_prometheus_javaagent.jar https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.15.0/jmx_prometheus_javaagent-0.15.0.jar
+      mkdir -p ${SNAPCRAFT_PRIME}/jar
+      wget -qO ${SNAPCRAFT_PRIME}/jar/jmx_prometheus_javaagent.jar https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.15.0/jmx_prometheus_javaagent-0.15.0.jar
       # Copy the tgz containing all jars needed
       # kafka-run-class.sh uses the base_dir as:
       #     base_dir=$(dirname $0)/..
