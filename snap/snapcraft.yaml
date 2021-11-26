@@ -2,13 +2,48 @@ name: zookeeper
 version: '3.5.9'
 summary: Apache zookeeper cluster in a snap
 description: |
-  Provides the zookeeper in a snap.
+  Provides the zookeeper in a snap. To run it:
+  1) $ sudo snap install zookeeper
+  2) $ sudo snap connect zookeeper:proc-folder
+
+  Override environment variables to point to correct folders and files:
+  3) $ sudo tee /etc/systemd/system/snap.zookeeper.zookeeper.service.d/override.conf << EOF
+     Environment="ZOOCFG=/var/snap/zookeeper/common/zookeeper.properties"
+     Environment="ZOOCFGDIR=/var/snap/zookeeper/common/"
+     Environment="ZOO_LOG_DIR=/var/snap/zookeeper/common/logs"
+     Environment="CLASSPATH=/snap/zookeeper/current/zookeeper-server/*:/snap/zookeeper/current/bin/zookeeper-server/target/lib/*"
+     EOF
+
+  If you want to run ZK with a custom log4j or change JVM parameters, add the following
+  environment variable to the list above, for example:
+  Environment='JVMFLAGS=-Dlog4j.configuration=file:/var/snap/zookeeper/common/zookeeper_log4j.properties -Xmx1g'
+
+
+  All config files and data will be placed on /var/snap/zookeeper/common/.
+  Place /var/snap/zookeeper/common/zookeeper.properties with desired options.
+
+  =============================
+
+  How to run Zookeeper with dedicated disks for dataLogDir or dataDir?
+
+  Mount those disks on /var/snap/zookeeper/common/<folder-of-your-choice>
+
+  Configure the corresponding entries on zookeeper.properties.
+
 confinement: strict
 grade: stable
 base: core18
 architectures: [amd64]
 # For core18
 assumes: [snapd2.49]
+
+plugs:
+  # Zookeeper tries to read mount info from its /proc/<pid>
+  # for mountinfo and coredump_filter
+  proc-folder:
+    interface: system-files
+    read:
+    - /proc
 
 parts:
   zookeeper:
@@ -44,9 +79,14 @@ parts:
       tar -zxvf /tmp/file.tar.gz -C ${SNAPCRAFT_PRIME}/bin/
 apps:
   zookeeper:
-    command: bin/zkServer.sh start ${SNAP_COMMON}/zookeeper.properties
+    # start-foreground instead of start.
+    # start will deploy the zk process and quit, return 0 back to systemd. In daemon=simple, it will
+    # also cause all the children process to be closed. Therefore, an alternative is daemon=forking
+    # or leave the process on foreground.
+    command: bin/zkServer.sh start-foreground ${SNAP_COMMON}/zookeeper.properties
     daemon: simple
     restart-condition: never
     plugs:
       - network-bind
       - network
+      - proc-folder
