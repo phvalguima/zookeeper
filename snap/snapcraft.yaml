@@ -1,0 +1,83 @@
+name: zookeeper
+version: '3.6.3'
+summary: Apache zookeeper cluster in a snap
+description: |
+  Provides the zookeeper in a snap. To run it:
+  1) $ sudo snap install zookeeper
+  2) $ sudo snap connect zookeeper:proc-folder
+  Override environment variables to point to correct folders and files:
+  3) $ sudo tee /etc/systemd/system/snap.zookeeper.zookeeper.service.d/override.conf << EOF
+     Environment="ZOOCFG=/var/snap/zookeeper/common/zookeeper.properties"
+     Environment="ZOOCFGDIR=/var/snap/zookeeper/common/"
+     Environment="ZOO_LOG_DIR=/var/snap/zookeeper/common/logs"
+     Environment="CLASSPATH=/snap/zookeeper/current/zookeeper-server/*:/snap/zookeeper/current/bin/zookeeper-server/target/lib/*"
+     EOF
+  If you want to run ZK with a custom log4j or change JVM parameters, add the following
+  environment variable to the list above, for example:
+  Environment='JVMFLAGS=-Dlog4j.configuration=file:/var/snap/zookeeper/common/zookeeper_log4j.properties -Xmx1g'
+  All config files and data will be placed on /var/snap/zookeeper/common/.
+  Place /var/snap/zookeeper/common/zookeeper.properties with desired options.
+  =============================
+  How to run Zookeeper with dedicated disks for dataLogDir or dataDir?
+  Mount those disks on /var/snap/zookeeper/common/<folder-of-your-choice>
+  Configure the corresponding entries on zookeeper.properties.
+confinement: strict
+grade: stable
+base: core18
+architectures: [amd64]
+# For core18
+assumes: [snapd2.49]
+
+plugs:
+  # Zookeeper tries to read mount info from its /proc/<pid>
+  # for mountinfo and coredump_filter
+  proc-folder:
+    interface: system-files
+    read:
+    - /proc
+
+parts:
+  zookeeper:
+    # It defaults to gradlew
+    plugin: maven
+    source: https://github.com/phvalguima/zookeeper
+    source-branch: branch-3.6.3
+    source-type: git
+    maven-options:
+      [-Pstandalone, -DskipTests=true, -Dmaven.compiler.debug=true, -Dmaven.javadoc.skip=false]
+    maven-targets:
+      - zookeeper-jute
+      - zookeeper-server
+    build-packages:
+      - wget
+      - curl    
+    build-environment:
+      - JAVA_HOME: /usr/lib/jvm/java-11-openjdk-amd64
+    override-build: |
+      snapcraftctl build
+      # Pack all the jar files into a single tarball to be unpacked at prime step
+      find . -name '*.jar' -exec tar -zcvf /tmp/file.tar.gz {} +
+    override-prime: |
+      snapcraftctl prime
+      find /root/parts/zookeeper/src/bin/ -name '*.sh' -exec cp -r "{}" ${SNAPCRAFT_PRIME}/bin/ \;
+      mkdir -p ${SNAPCRAFT_PRIME}/jar
+      wget -qO ${SNAPCRAFT_PRIME}/jar/jmx_prometheus_javaagent.jar https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.15.0/jmx_prometheus_javaagent-0.15.0.jar
+      # Copy the tgz containing all jars needed
+      # kafka-run-class.sh uses the base_dir as:
+      #     base_dir=$(dirname $0)/..
+      # JAR files should placed on the parent folder
+      # IMPORTANT: update the tgz name for new upgrade versions
+      tar -zxvf /tmp/file.tar.gz -C ${SNAPCRAFT_PRIME}/bin/
+apps:
+  zookeeper:
+    # start-foreground instead of start.
+    # start will deploy the zk process and quit, return 0 back to systemd. In daemon=simple, it will
+    # also cause all the children process to be closed. Therefore, an alternative is daemon=forking
+    # or leave the process on foreground.
+    command: bin/zkServer.sh start-foreground ${SNAP_COMMON}/zookeeper.properties
+    daemon: simple
+    restart-condition: never
+    plugs:
+      - network-bind
+      - network
+      - proc-folder
